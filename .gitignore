@@ -1,4 +1,6 @@
 target
+.idea/
+.DS_Store
 
 # tools ignores
 tools/pylampo/pylampo_client/__pycache__
