@@ -7,6 +7,7 @@ use lightning_signer::{
     signer::ClockStartingTimeFactory,
     util::{clock::StandardClock, crypto_utils::generate_seed},
 };
+
 use std::sync::Arc;
 use vls_proxy::vls_protocol_client::Error;
 use vls_proxy::{
