@@ -1,33 +1,46 @@
-use crate::util::create_spending_transaction;
-use lightning_signer::{
-    bitcoin::{
-        secp256k1::{schnorr::Signature, All, Secp256k1},
-        Address, Script, Transaction, TxOut, Witness,
-    },
-    lightning::{
-        offers::invoice::UnsignedBolt12Invoice,
-        offers::invoice_request::UnsignedInvoiceRequest,
-        sign::{EntropySource, NodeSigner, SignerProvider, SpendableOutputDescriptor},
-    },
+use anyhow::Result;
+use lightning_signer::bitcoin::bech32::u5;
+use lightning_signer::bitcoin::secp256k1::ecdh::SharedSecret;
+use lightning_signer::bitcoin::secp256k1::ecdsa::RecoverableSignature;
+use lightning_signer::bitcoin::secp256k1::ecdsa::Signature as EcdsaSignature;
+use lightning_signer::bitcoin::secp256k1::schnorr::Signature;
+use lightning_signer::bitcoin::secp256k1::PublicKey;
+use lightning_signer::bitcoin::secp256k1::Scalar;
+use lightning_signer::bitcoin::secp256k1::{All, Secp256k1};
+use lightning_signer::bitcoin::Address;
+use lightning_signer::bitcoin::Transaction;
+use lightning_signer::bitcoin::Witness;
+use lightning_signer::bitcoin::{Script, TxOut};
+use lightning_signer::invoice::bolt12::UnsignedBolt12Invoice;
+use lightning_signer::lightning::ln::{msgs, script::ShutdownScript};
+use lightning_signer::lightning::offers::invoice_request::UnsignedInvoiceRequest;
+use lightning_signer::lightning::sign::SpendableOutputDescriptor;
+use lightning_signer::lightning::sign::{
+    EntropySource, KeyMaterial, NodeSigner, Recipient, SignerProvider,
 };
-use log::info;
-use vls_proxy::vls_protocol_client::{DynSigner, KeysManagerClient, SpendableKeysInterface};
+use vls_proxy::vls_protocol_client::SpendableKeysInterface;
+use vls_proxy::vls_protocol_client::{DynSigner, KeysManagerClient};
 
-trait LampoSigner:
-    EntropySource
-    + NodeSigner
-    + SignerProvider<Signer = DynSigner>
-    + SpendableKeysInterface<Signer = DynSigner>
-{
-}
+use crate::util::create_spending_transaction;
 
+#[allow(dead_code)]
+/// Holds an instance of KeysManagerClient which interacts with the VLS protocol to fetch or manage keys.
 pub struct LampoKeysManager {
-    pub client: KeysManagerClient,
-    pub sweep_address: Address,
+    /// The KeysManagerClient is a client-side interface for interacting with the key management functionalities of the VLS signer.
+    client: KeysManagerClient,
+    sweep_address: Address,
 }
 
-impl LampoSigner for LampoKeysManager {}
+impl LampoKeysManager {
+    pub fn new(client: KeysManagerClient, sweep_address: Address) -> Self {
+        LampoKeysManager {
+            client,
+            sweep_address,
+        }
+    }
+}
 
+// To get signer instances for individual channels.
 impl SignerProvider for LampoKeysManager {
     type Signer = DynSigner;
 
@@ -52,10 +65,7 @@ impl SignerProvider for LampoKeysManager {
         DynSigner::new(client)
     }
 
-    fn read_chan_signer(
-        &self,
-        reader: &[u8],
-    ) -> Result<Self::Signer, lightning_signer::lightning::ln::msgs::DecodeError> {
+    fn read_chan_signer(&self, reader: &[u8]) -> Result<Self::Signer, msgs::DecodeError> {
         let signer = self.client.read_chan_signer(reader)?;
         Ok(DynSigner::new(signer))
     }
@@ -63,50 +73,45 @@ impl SignerProvider for LampoKeysManager {
     fn get_destination_script(&self) -> Result<Script, ()> {
         self.client.get_destination_script()
     }
-
-    fn get_shutdown_scriptpubkey(
-        &self,
-    ) -> Result<lightning_signer::lightning::ln::script::ShutdownScript, ()> {
+    fn get_shutdown_scriptpubkey(&self) -> Result<ShutdownScript, ()> {
         self.client.get_shutdown_scriptpubkey()
     }
 }
 
+// Source of entropy.
 impl EntropySource for LampoKeysManager {
     fn get_secure_random_bytes(&self) -> [u8; 32] {
         self.client.get_secure_random_bytes()
     }
 }
 
+// Cryptographic operations at the scope level of a node
 impl NodeSigner for LampoKeysManager {
-    fn get_inbound_payment_key_material(&self) -> lightning_signer::lightning::sign::KeyMaterial {
+    fn get_inbound_payment_key_material(&self) -> KeyMaterial {
         self.client.get_inbound_payment_key_material()
     }
 
-    fn get_node_id(
-        &self,
-        recipient: lightning_signer::lightning::sign::Recipient,
-    ) -> Result<lightning_signer::bitcoin::secp256k1::PublicKey, ()> {
+    fn get_node_id(&self, recipient: Recipient) -> Result<PublicKey, ()> {
         self.client.get_node_id(recipient)
     }
 
     fn ecdh(
         &self,
-        recipient: lightning_signer::lightning::sign::Recipient,
-        other_key: &lightning_signer::bitcoin::secp256k1::PublicKey,
-        tweak: Option<&lightning_signer::bitcoin::secp256k1::Scalar>,
-    ) -> Result<lightning_signer::bitcoin::secp256k1::ecdh::SharedSecret, ()> {
+        recipient: Recipient,
+        other_key: &PublicKey,
+        tweak: Option<&Scalar>,
+    ) -> Result<SharedSecret, ()> {
         self.client.ecdh(recipient, other_key, tweak)
     }
 
     fn sign_invoice(
         &self,
         hrp_bytes: &[u8],
-        invoice_data: &[lightning_signer::bitcoin::bech32::u5],
-        recipient: lightning_signer::lightning::sign::Recipient,
-    ) -> Result<lightning_signer::bitcoin::secp256k1::ecdsa::RecoverableSignature, ()> {
+        invoice_data: &[u5],
+        recipient: Recipient,
+    ) -> Result<RecoverableSignature, ()> {
         self.client.sign_invoice(hrp_bytes, invoice_data, recipient)
     }
-
     fn sign_bolt12_invoice_request(
         &self,
         invoice_request: &UnsignedInvoiceRequest,
@@ -117,15 +122,12 @@ impl NodeSigner for LampoKeysManager {
     fn sign_bolt12_invoice(&self, invoice: &UnsignedBolt12Invoice) -> Result<Signature, ()> {
         self.client.sign_bolt12_invoice(invoice)
     }
-
-    fn sign_gossip_message(
-        &self,
-        msg: lightning_signer::lightning::ln::msgs::UnsignedGossipMessage,
-    ) -> Result<lightning_signer::bitcoin::secp256k1::ecdsa::Signature, ()> {
+    fn sign_gossip_message(&self, msg: msgs::UnsignedGossipMessage) -> Result<EcdsaSignature, ()> {
         self.client.sign_gossip_message(msg)
     }
 }
 
+// Manages spending from descriptors that define how outputs are spent in transactions (Not Sure!!)
 impl SpendableKeysInterface for LampoKeysManager {
     fn spend_spendable_outputs(
         &self,
@@ -134,8 +136,7 @@ impl SpendableKeysInterface for LampoKeysManager {
         change_destination_script: Script,
         feerate_sat_per_1000_weight: u32,
         _secp_ctx: &Secp256k1<All>,
-    ) -> anyhow::Result<Transaction> {
-        info!("ENTER spend_spendable_outputs");
+    ) -> Result<Transaction> {
         let mut tx = create_spending_transaction(
             descriptors,
             outputs,
@@ -148,7 +149,6 @@ impl SpendableKeysInterface for LampoKeysManager {
         }
         Ok(tx)
     }
-
     fn get_sweep_address(&self) -> Address {
         self.sweep_address.clone()
     }

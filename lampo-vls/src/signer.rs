@@ -1,15 +1,25 @@
-use async_trait::async_trait;
 use std::sync::Arc;
-use vls_proxy::vls_protocol_client::{ClientResult, SignerPort, Transport};
 
-pub struct LampoSignerPort {
-    pub transport: Arc<dyn Transport>,
+use async_trait::async_trait;
+use vls_proxy::vls_protocol_client::{Error, SignerPort, Transport};
+
+#[allow(dead_code)]
+/// Wraps the LampoVLSInProcess in a struct,
+/// providing a structured way to interact with the protocol asynchronously via the SignerPort trait.
+pub struct LampoVLSSignerPort {
+    protocol_handler: Arc<dyn Transport>,
+}
+
+impl LampoVLSSignerPort {
+    pub fn new(protocol_handler: Arc<dyn Transport>) -> Self {
+        LampoVLSSignerPort { protocol_handler }
+    }
 }
 
 #[async_trait]
-impl SignerPort for LampoSignerPort {
-    async fn handle_message(&self, message: Vec<u8>) -> ClientResult<Vec<u8>> {
-        self.transport.node_call(message)
+impl SignerPort for LampoVLSSignerPort {
+    async fn handle_message(&self, message: Vec<u8>) -> Result<Vec<u8>, Error> {
+        self.protocol_handler.node_call(message)
     }
     fn is_ready(&self) -> bool {
         true
