@@ -13,8 +13,8 @@ lightning-background-processor = { git = "https://github.com/vincenzopalazzo/rus
 lightning-net-tokio = { git = "https://github.com/vincenzopalazzo/rust-lightning.git", branch = "macros/allow-to-inject-channels-keys" }
 lightning-rapid-gossip-sync = { git = "https://github.com/vincenzopalazzo/rust-lightning.git", branch = "macros/allow-to-inject-channels-keys" }
 lightning-invoice = { git = "https://github.com/vincenzopalazzo/rust-lightning.git", branch = "macros/allow-to-inject-channels-keys" }
-vls-core = { git = "https://gitlab.com/lightning-signer/validating-lightning-signer.git", features = ["std"] }
-vls-proxy = { git = "https://gitlab.com/lightning-signer/validating-lightning-signer.git" }
+vls-core = { git = "https://gitlab.com/lightning-signer/validating-lightning-signer.git",  version = "0.11.0", features = ["std"] }
+vls-proxy = { git = "https://gitlab.com/lightning-signer/validating-lightning-signer.git", version = "0.11.0"}
 url = "2.5.0"
 triggered = "0.1.2"
 async-trait = "0.1"
